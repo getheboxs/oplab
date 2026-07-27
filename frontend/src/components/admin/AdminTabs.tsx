@@ -12,7 +12,7 @@ const tabs: TabItem[] = [
   { label: "Ringkasan Statistik", icon: LayoutGrid, path: "/admin/dashboard" },
   { label: "Manajemen Praktikum", icon: ClipboardList, path: "/admin/praktikum" },
   { label: "Monitor Real-Time", icon: ShieldAlert },
-  { label: "Rekap & Ekspor CSV", icon: Download },
+  { label: "Rekap & Ekspor CSV", icon: Download, path: "/admin/rekap" },
 ];
 
 export default function AdminTabs() {

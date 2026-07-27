@@ -14,6 +14,13 @@ export async function findAllPraktikum(): Promise<Praktikum[]> {
   return rows;
 }
 
+export async function findActivePraktikum(): Promise<Praktikum | null> {
+  const [rows] = await pool.query<PraktikumRow[]>(
+    "SELECT * FROM praktikum WHERE status = 'aktif' LIMIT 1"
+  );
+  return rows[0] ?? null;
+}
+
 export async function findPraktikumById(id: number): Promise<Praktikum | null> {
   const [rows] = await pool.query<PraktikumRow[]>(
     "SELECT * FROM praktikum WHERE id_praktikum = ? LIMIT 1",

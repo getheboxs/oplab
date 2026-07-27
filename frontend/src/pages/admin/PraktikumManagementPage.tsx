@@ -21,15 +21,6 @@ const tingkatLabel: Record<string, string> = {
   sulit: "Mahir",
 };
 
-function formatTanggal(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("id-ID", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
 export default function PraktikumManagementPage() {
   const { token } = useAuth();
   const [list, setList] = useState<Praktikum[]>([]);
@@ -164,46 +155,67 @@ export default function PraktikumManagementPage() {
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-card">
-          {isLoading ? (
-            <div className="flex min-h-[240px] items-center justify-center text-sm text-slate-400">
-              Memuat data praktikum...
-            </div>
-          ) : list.length === 0 ? (
-            <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-              <AlertCircle className="h-6 w-6 text-slate-300" />
-              <p className="text-sm text-slate-400">
-                Belum ada praktikum terdaftar. Klik tombol di kanan atas untuk membuat.
-              </p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {list.map((item) => (
-                <li key={item.id_praktikum} className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-slate-900">{item.judul}</h3>
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          item.status === "aktif"
-                            ? "bg-emerald-50 text-emerald-600"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {item.status === "aktif" ? "Aktif" : "Nonaktif"}
+        {isLoading ? (
+          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-400 shadow-card">
+            Memuat data praktikum...
+          </div>
+        ) : list.length === 0 ? (
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center shadow-card">
+            <AlertCircle className="h-6 w-6 text-slate-300" />
+            <p className="text-sm text-slate-400">
+              Belum ada praktikum terdaftar. Klik tombol di kanan atas untuk membuat.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {list.map((item) => (
+              <div
+                key={item.id_praktikum}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-md bg-brand-50 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide text-brand-600">
+                      {item.mata_kuliah}
+                    </span>
+                    <span className="rounded-md border border-slate-200 px-2.5 py-1 text-xs text-slate-500">
+                      Bahasa:{" "}
+                      <span className="font-mono font-semibold text-sky-600">
+                        {item.bahasa === "javascript" ? "JAVASCRIPT" : "TYPESCRIPT"}
                       </span>
-                      <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-600">
-                        {tingkatLabel[item.tingkat_kesulitan] ?? item.tingkat_kesulitan}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {item.mata_kuliah} · {item.bahasa === "javascript" ? "JavaScript" : "TypeScript"} ·{" "}
-                      <span className="font-mono">{item.kode_akses}</span> · {item.durasi_menit} menit
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {formatTanggal(item.jadwal_mulai)} &rarr; {formatTanggal(item.jadwal_berakhir)}
-                    </p>
+                    </span>
                   </div>
+
+                  <span
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                      item.status === "aktif"
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        item.status === "aktif" ? "bg-emerald-500" : "bg-slate-400"
+                      }`}
+                    />
+                    {item.status === "aktif" ? "AKTIF" : "NONAKTIF"}
+                  </span>
+                </div>
+
+                <h3 className="mt-4 text-lg font-bold text-slate-900">{item.judul}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  {item.deskripsi || "Tidak ada deskripsi."}
+                </p>
+
+                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                  <p className="text-sm text-slate-500">
+                    Kode: <span className="font-mono font-semibold text-brand-600">{item.kode_akses}</span>
+                    {" · "}Durasi: <span className="font-semibold text-slate-700">{item.durasi_menit} Menit</span>
+                    {" · "}
+                    <span className="font-semibold text-emerald-600">
+                      {tingkatLabel[item.tingkat_kesulitan] ?? item.tingkat_kesulitan}
+                    </span>
+                  </p>
 
                   <div className="flex shrink-0 items-center gap-2">
                     <button
@@ -240,11 +252,11 @@ export default function PraktikumManagementPage() {
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </main>
 
       <PraktikumFormModal

@@ -3,6 +3,7 @@ import LandingPage from "./pages/LandingPage";
 import AdminLoginPage from "./pages/admin/LoginPage";
 import AdminDashboardPage from "./pages/admin/DashboardPage";
 import PraktikumManagementPage from "./pages/admin/PraktikumManagementPage";
+import RekapPage from "./pages/admin/RekapPage";
 import RequireAdminAuth from "./routes/RequireAdminAuth";
 
 export default function App() {
@@ -23,6 +24,14 @@ export default function App() {
         element={
           <RequireAdminAuth>
             <PraktikumManagementPage />
+          </RequireAdminAuth>
+        }
+      />
+      <Route
+        path="/admin/rekap"
+        element={
+          <RequireAdminAuth>
+            <RekapPage />
           </RequireAdminAuth>
         }
       />
