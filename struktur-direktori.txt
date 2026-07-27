@@ -1,0 +1,32 @@
+oplab/
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   ├── models/
+│   │   ├── middlewares/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── types/
+│   ├── database/
+│   │   ├── migrations/
+│   │   └── seeders/
+│   └── tests/
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   │   ├── admin/
+│   │   │   └── mahasiswa/
+│   │   ├── hooks/
+│   │   ├── services/
+│   │   ├── routes/
+│   │   ├── workers/
+│   │   ├── assets/
+│   │   ├── context/
+│   │   └── utils/
+│   └── public/
+│
+└── docs/
