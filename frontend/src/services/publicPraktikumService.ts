@@ -55,6 +55,22 @@ export async function registerPeserta(
   return data as RegisterPesertaResult;
 }
 
+export async function autosaveKode(
+  idPeserta: number,
+  kodeProgram: string,
+  outputTerakhir?: string
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/api/public/peserta/${idPeserta}/autosave`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kode_program: kodeProgram, output_terakhir: outputTerakhir }),
+    });
+  } catch {
+    // autosave bersifat best-effort untuk monitoring; abaikan bila gagal terkirim
+  }
+}
+
 export async function recordViolation(idPeserta: number, jenisPelanggaran: string): Promise<void> {
   try {
     await fetch(`${API_BASE_URL}/api/public/peserta/${idPeserta}/violation`, {

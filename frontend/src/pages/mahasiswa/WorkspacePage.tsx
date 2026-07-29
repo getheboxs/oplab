@@ -15,7 +15,11 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { PraktikumAktif } from "../../services/publicPraktikumService";
-import { recordViolation, submitPraktikum } from "../../services/publicPraktikumService";
+import {
+  recordViolation,
+  submitPraktikum,
+  autosaveKode,
+} from "../../services/publicPraktikumService";
 import { useViolationTracker } from "../../hooks/useViolationTracker";
 import { runCodeInWorker } from "../../utils/runCodeInWorker";
 import { transpileIfNeeded } from "../../utils/transpileTypeScript";
@@ -167,11 +171,18 @@ export default function WorkspacePage() {
   );
   useViolationTracker(!!session && !endDialog, handleViolation);
 
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   function handleCodeChange(value: string | undefined) {
     if (!session) return;
     const next = value ?? "";
     setCode(next);
     localStorage.setItem(codeKey(session.id_peserta), next);
+
+    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+    autosaveTimeoutRef.current = setTimeout(() => {
+      autosaveKode(session.id_peserta, next);
+    }, 3000);
   }
 
   function handleReset() {
@@ -191,6 +202,11 @@ export default function WorkspacePage() {
       setConsoleLogs(result.logs);
       setRuntimeError(result.errorMessage ?? null);
       setIframeDoc(buildIframeDoc(transpiled));
+
+      const outputSummary = result.errorMessage
+        ? `Error: ${result.errorMessage}`
+        : result.logs.map((log) => log.message).join("\n") || "(tidak ada output console)";
+      autosaveKode(session.id_peserta, code, outputSummary);
     } catch (err) {
       setRuntimeError(err instanceof Error ? err.message : "Gagal menjalankan kode.");
     } finally {

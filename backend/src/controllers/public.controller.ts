@@ -3,6 +3,7 @@ import { AppError } from "../utils/AppError.js";
 import {
   getAktifPraktikumPublic,
   registerPeserta,
+  autosaveKode,
   recordViolation,
   submitPraktikum,
 } from "../services/peserta.service.js";
@@ -29,6 +30,20 @@ export async function daftarPeserta(req: Request, res: Response) {
     const { kode_akses, nim, nama } = req.body ?? {};
     const result = await registerPeserta({ kode_akses, nim, nama });
     res.status(201).json(result);
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function autosave(req: Request, res: Response) {
+  try {
+    const idPeserta = Number(req.params.id);
+    const { kode_program, output_terakhir } = req.body ?? {};
+    if (kode_program === undefined) {
+      return res.status(400).json({ message: "kode_program wajib diisi." });
+    }
+    await autosaveKode(idPeserta, kode_program, output_terakhir);
+    res.status(200).json({ status: "ok" });
   } catch (error) {
     handleError(res, error);
   }

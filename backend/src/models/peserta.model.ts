@@ -31,6 +31,25 @@ export async function findPesertaById(id: number): Promise<PesertaDetail | null>
   return rows[0] ?? null;
 }
 
+export async function updateAutosave(
+  idPeserta: number,
+  kodeProgram: string,
+  outputTerakhir?: string
+): Promise<void> {
+  if (outputTerakhir !== undefined) {
+    await pool.query(
+      `UPDATE peserta SET kode_terkini = ?, output_terakhir = ?, kode_updated_at = NOW()
+       WHERE id_peserta = ?`,
+      [kodeProgram, outputTerakhir, idPeserta]
+    );
+  } else {
+    await pool.query(
+      `UPDATE peserta SET kode_terkini = ?, kode_updated_at = NOW() WHERE id_peserta = ?`,
+      [kodeProgram, idPeserta]
+    );
+  }
+}
+
 export async function insertViolationLog(
   idPeserta: number,
   jenisPelanggaran: string,

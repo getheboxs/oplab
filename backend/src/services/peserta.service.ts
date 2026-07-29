@@ -4,6 +4,7 @@ import {
   findPraktikumByKodeAkses,
   insertPeserta,
   findPesertaById,
+  updateAutosave,
   insertViolationLog,
   insertActivityLog,
   insertSubmission,
@@ -87,6 +88,18 @@ export async function registerPeserta(input: {
     waktu_mulai,
     praktikum: toPublicPraktikum(praktikum),
   };
+}
+
+export async function autosaveKode(
+  idPeserta: number,
+  kodeProgram: string,
+  outputTerakhir?: string
+): Promise<void> {
+  const peserta = await findPesertaById(idPeserta);
+  if (!peserta) throw new AppError("Peserta tidak ditemukan.", 404);
+  if (peserta.status === "selesai") return; // sesi sudah berakhir, abaikan
+
+  await updateAutosave(idPeserta, kodeProgram, outputTerakhir);
 }
 
 export async function recordViolation(idPeserta: number, jenisPelanggaran: string): Promise<void> {

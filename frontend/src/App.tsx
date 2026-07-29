@@ -4,6 +4,9 @@ import AdminLoginPage from "./pages/admin/LoginPage";
 import AdminDashboardPage from "./pages/admin/DashboardPage";
 import PraktikumManagementPage from "./pages/admin/PraktikumManagementPage";
 import RekapPage from "./pages/admin/RekapPage";
+import MonitorPage from "./pages/admin/MonitorPage";
+import MonitorDetailPage from "./pages/admin/MonitorDetailPage";
+import UserManagementPage from "./pages/admin/UserManagementPage";
 import PraktikumLobiPage from "./pages/mahasiswa/PraktikumLobiPage";
 import WorkspacePage from "./pages/mahasiswa/WorkspacePage";
 import RequireAdminAuth from "./routes/RequireAdminAuth";
@@ -36,6 +39,30 @@ export default function App() {
         element={
           <RequireAdminAuth>
             <RekapPage />
+          </RequireAdminAuth>
+        }
+      />
+      <Route
+        path="/admin/monitor"
+        element={
+          <RequireAdminAuth>
+            <MonitorPage />
+          </RequireAdminAuth>
+        }
+      />
+      <Route
+        path="/admin/monitor/:id"
+        element={
+          <RequireAdminAuth>
+            <MonitorDetailPage />
+          </RequireAdminAuth>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <RequireAdminAuth>
+            <UserManagementPage />
           </RequireAdminAuth>
         }
       />

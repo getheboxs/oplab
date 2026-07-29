@@ -67,6 +67,9 @@ CREATE TABLE peserta (
     waktu_mulai    DATETIME NOT NULL,
     waktu_selesai  DATETIME NULL,
     status         ENUM('mengerjakan', 'selesai') DEFAULT 'mengerjakan',
+    kode_terkini    LONGTEXT NULL COMMENT 'Snapshot kode terakhir yang di-autosave dari sisi client untuk keperluan monitoring admin',
+    output_terakhir LONGTEXT NULL COMMENT 'Snapshot hasil console output terakhir saat mahasiswa menjalankan kode',
+    kode_updated_at DATETIME NULL COMMENT 'Waktu snapshot autosave terakhir diterima',
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_peserta_praktikum

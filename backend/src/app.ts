@@ -6,6 +6,8 @@ import praktikumRoutes from "./routes/praktikum.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import rekapRoutes from "./routes/rekap.routes.js";
 import publicRoutes from "./routes/public.routes.js";
+import monitorRoutes from "./routes/monitor.routes.js";
+import userRoutes from "./routes/user.routes.js";
 
 dotenv.config();
 
@@ -26,6 +28,8 @@ app.use("/api/admin", authRoutes);
 app.use("/api/admin/praktikum", praktikumRoutes);
 app.use("/api/admin/dashboard", dashboardRoutes);
 app.use("/api/admin/rekap", rekapRoutes);
+app.use("/api/admin/monitor", monitorRoutes);
+app.use("/api/admin/users", userRoutes);
 app.use("/api/public", publicRoutes);
 
 export default app;
