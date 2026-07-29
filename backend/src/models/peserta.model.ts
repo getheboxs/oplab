@@ -16,6 +16,60 @@ export async function findPraktikumByKodeAkses(kodeAkses: string): Promise<Prakt
   return rows[0] ?? null;
 }
 
+export interface PesertaDetail {
+  id_peserta: number;
+  id_praktikum: number;
+  waktu_mulai: string;
+  status: "mengerjakan" | "selesai";
+}
+
+export async function findPesertaById(id: number): Promise<PesertaDetail | null> {
+  const [rows] = await pool.query<(PesertaDetail & RowDataPacket)[]>(
+    "SELECT id_peserta, id_praktikum, waktu_mulai, status FROM peserta WHERE id_peserta = ? LIMIT 1",
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
+export async function insertViolationLog(
+  idPeserta: number,
+  jenisPelanggaran: string,
+  keterangan?: string
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO violation_log (id_peserta, jenis_pelanggaran, keterangan, waktu_terjadi)
+     VALUES (?, ?, ?, NOW())`,
+    [idPeserta, jenisPelanggaran, keterangan ?? null]
+  );
+}
+
+export async function insertActivityLog(
+  idPeserta: number,
+  jenisAktivitas: string,
+  keterangan?: string
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO activity_log (id_peserta, jenis_aktivitas, keterangan, waktu_terjadi)
+     VALUES (?, ?, ?, NOW())`,
+    [idPeserta, jenisAktivitas, keterangan ?? null]
+  );
+}
+
+export async function insertSubmission(
+  idPeserta: number,
+  kodeProgram: string,
+  submitType: "manual" | "auto",
+  durasiDetik: number
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO submission (id_peserta, kode_program, waktu_submit, durasi_pengerjaan_detik, submit_type)
+     VALUES (?, ?, NOW(), ?, ?)`,
+    [idPeserta, kodeProgram, durasiDetik, submitType]
+  );
+  await pool.query("UPDATE peserta SET status = 'selesai', waktu_selesai = NOW() WHERE id_peserta = ?", [
+    idPeserta,
+  ]);
+}
 export async function insertPeserta(data: {
   id_praktikum: number;
   nim: string;

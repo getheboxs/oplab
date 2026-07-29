@@ -59,8 +59,15 @@ export default function PraktikumLobiPage() {
         });
       }
 
-      // NOTE: halaman editor kode praktikum belum dibuat — ditangani pada tahap berikutnya.
-      navigate("/praktikum/mulai", { state: { id_peserta: result.id_peserta } });
+      navigate("/praktikum/kerjakan", {
+        state: {
+          id_peserta: result.id_peserta,
+          nim,
+          nama,
+          waktu_mulai: result.waktu_mulai,
+          praktikum: result.praktikum,
+        },
+      });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Gagal memulai praktikum.");
     } finally {

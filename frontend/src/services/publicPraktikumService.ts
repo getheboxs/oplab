@@ -7,6 +7,11 @@ export interface PraktikumAktif {
   id_praktikum: number;
   judul: string;
   mata_kuliah: string;
+  deskripsi: string | null;
+  instruksi: string;
+  starter_code: string | null;
+  contoh_input: string | null;
+  contoh_output: string | null;
   bahasa: BahasaPemrograman;
   tingkat_kesulitan: TingkatKesulitan;
   durasi_menit: number;
@@ -48,4 +53,33 @@ export async function registerPeserta(
     throw new Error(data.message ?? "Gagal memulai praktikum.");
   }
   return data as RegisterPesertaResult;
+}
+
+export async function recordViolation(idPeserta: number, jenisPelanggaran: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/api/public/peserta/${idPeserta}/violation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jenis_pelanggaran: jenisPelanggaran }),
+    });
+  } catch {
+    // pencatatan pelanggaran bersifat best-effort; abaikan bila gagal terkirim
+  }
+}
+
+export async function submitPraktikum(
+  idPeserta: number,
+  kodeProgram: string,
+  submitType: "manual" | "auto"
+): Promise<{ waktu_submit: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/public/peserta/${idPeserta}/submission`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kode_program: kodeProgram, submit_type: submitType }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message ?? "Gagal mengirim praktikum.");
+  }
+  return data;
 }

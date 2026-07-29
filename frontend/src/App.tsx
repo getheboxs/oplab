@@ -5,7 +5,7 @@ import AdminDashboardPage from "./pages/admin/DashboardPage";
 import PraktikumManagementPage from "./pages/admin/PraktikumManagementPage";
 import RekapPage from "./pages/admin/RekapPage";
 import PraktikumLobiPage from "./pages/mahasiswa/PraktikumLobiPage";
-import PraktikumMulaiPlaceholder from "./pages/mahasiswa/PraktikumMulaiPlaceholder";
+import WorkspacePage from "./pages/mahasiswa/WorkspacePage";
 import RequireAdminAuth from "./routes/RequireAdminAuth";
 
 export default function App() {
@@ -13,7 +13,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/praktikum" element={<PraktikumLobiPage />} />
-      <Route path="/praktikum/mulai" element={<PraktikumMulaiPlaceholder />} />
+      <Route path="/praktikum/kerjakan" element={<WorkspacePage />} />
       <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route
         path="/admin/dashboard"
