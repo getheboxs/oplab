@@ -1,7 +1,6 @@
-import { RowDataPacket } from "mysql2";
 import { pool } from "../config/db.js";
 
-export interface RekapRow extends RowDataPacket {
+export interface RekapRow {
   id_peserta: number;
   nim: string;
   nama: string;
@@ -22,14 +21,17 @@ export interface RekapFilter {
 export async function findRekap(filter: RekapFilter): Promise<RekapRow[]> {
   const conditions: string[] = [];
   const params: (string | number)[] = [];
+  let paramIndex = 1;
 
   if (filter.idPraktikum) {
-    conditions.push("p.id_praktikum = ?");
+    conditions.push(`p.id_praktikum = $${paramIndex}`);
     params.push(filter.idPraktikum);
+    paramIndex += 1;
   }
   if (filter.status) {
-    conditions.push("p.status = ?");
+    conditions.push(`p.status = $${paramIndex}`);
     params.push(filter.status);
+    paramIndex += 1;
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -44,7 +46,7 @@ export async function findRekap(filter: RekapFilter): Promise<RekapRow[]> {
         p.waktu_selesai,
         p.id_praktikum,
         pr.judul AS praktikum_judul,
-        COALESCE(v.total_violation, 0) AS total_pelanggaran,
+        COALESCE(v.total_violation, 0)::int AS total_pelanggaran,
         s.durasi_pengerjaan_detik
       FROM peserta p
       INNER JOIN praktikum pr ON pr.id_praktikum = p.id_praktikum

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, BookOpen, Code2 } from "lucide-react";
 import AdminHeader from "../../components/admin/AdminHeader";
 import AdminTabs from "../../components/admin/AdminTabs";
@@ -22,15 +22,24 @@ function formatJam(value: string) {
 export default function MonitorPage() {
   const { token } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [items, setItems] = useState<MonitorItem[]>([]);
   const [praktikumOptions, setPraktikumOptions] = useState<Praktikum[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const initialPraktikum = searchParams.get("idPraktikum") || "semua";
   const [search, setSearch] = useState("");
-  const [filterPraktikum, setFilterPraktikum] = useState("semua");
+  const [filterPraktikum, setFilterPraktikum] = useState(initialPraktikum);
   const [filterStatus, setFilterStatus] = useState("semua");
+
+  useEffect(() => {
+    const qPraktikum = searchParams.get("idPraktikum");
+    if (qPraktikum && qPraktikum !== filterPraktikum) {
+      setFilterPraktikum(qPraktikum);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!token) return;
@@ -69,8 +78,7 @@ export default function MonitorPage() {
 
       <main className="mx-auto max-w-7xl px-6 py-8">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <div className="relative flex-1">            
             <input
               type="text"
               value={search}

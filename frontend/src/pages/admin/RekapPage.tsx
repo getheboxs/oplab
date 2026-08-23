@@ -6,35 +6,51 @@ import { useAuth } from "../../context/AuthContext";
 import { fetchRekap, type RekapItem } from "../../services/rekapService";
 import { fetchPraktikumList, type Praktikum } from "../../services/praktikumService";
 
-function formatWaktuMulai(value: string) {
+function formatWaktuMulai(value: string | null | undefined) {
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const day = pad(date.getDate());
+  const month = pad(date.getMonth() + 1);
+  const year = date.getFullYear();
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
-function formatDurasi(detik: number) {
-  const menit = Math.floor(detik / 60);
-  const sisaDetik = detik % 60;
+function formatDurasi(detik: number | null | undefined) {
+  const d = Number(detik) || 0;
+  const menit = Math.floor(d / 60);
+  const sisaDetik = d % 60;
   return `${menit}m ${sisaDetik}d`;
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string | null | undefined) {
+  if (!status) return "-";
   return status === "selesai" ? "SELESAI" : "SEDANG_MENGERJAKAN";
 }
 
-function toCsvValue(value: string | number) {
-  const text = String(value);
-  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
-    return `"${text.replace(/"/g, '""')}"`;
+/**
+ * Format string/nilai ke dalam cell murni tanpa tanda petik ganda di awal & akhir.
+ * Membersihkan karakter pemisah agar tiap data masuk ke 1 cell tersendiri.
+ */
+function toCleanCell(value: unknown, delimiter = ";"): string {
+  if (value === null || value === undefined) {
+    return "";
   }
+  let text = String(value).trim();
+  // Hilangkan tanda petik ganda
+  text = text.replace(/"/g, "");
+  // Ganti delimiter internal agar cell tidak terbelah tidak sengaja
+  if (delimiter === ";") {
+    text = text.replace(/;/g, " - ");
+  } else if (delimiter === ",") {
+    text = text.replace(/,/g, " - ");
+  }
+  // Ganti baris baru menjadi spasi
+  text = text.replace(/[\r\n]+/g, " ");
   return text;
 }
 
@@ -85,22 +101,40 @@ export default function RekapPage() {
   }, [filterPraktikum, praktikumOptions]);
 
   function handleDownloadCsv() {
-    const header = ["NIM", "Nama", "Praktikum", "Waktu Mulai", "Pelanggaran", "Durasi", "Status"];
-    const rows = rekap.map((item) => [
-      item.nim,
-      item.nama,
-      item.praktikum,
+    const activeDelim = ";";
+    const headers = [
+      "No",
+      "NIM",
+      "Nama Mahasiswa",
+      "Praktikum / Mata Kuliah",
+      "Waktu Mulai",
+      "Jumlah Pelanggaran",
+      "Durasi Pengerjaan",
+      "Status",
+    ];
+
+    const rows = rekap.map((item, idx) => [
+      idx + 1,
+      item.nim ?? "",
+      item.nama ?? "",
+      item.praktikum ?? "",
       formatWaktuMulai(item.waktu_mulai),
-      `${item.jumlah_pelanggaran} Kali`,
+      item.jumlah_pelanggaran !== undefined && item.jumlah_pelanggaran !== null
+        ? `${item.jumlah_pelanggaran} Kali`
+        : "0 Kali",
       formatDurasi(item.durasi_detik),
       statusLabel(item.status),
     ]);
 
-    const csvContent = [header, ...rows]
-      .map((row) => row.map(toCsvValue).join(","))
-      .join("\r\n");
+    // Format setiap baris bersih tanpa tanda petik ganda
+    const csvLines = [
+      headers.map((h) => toCleanCell(h, activeDelim)).join(activeDelim),
+      ...rows.map((row) => row.map((cell) => toCleanCell(cell, activeDelim)).join(activeDelim)),
+    ];
 
-    // Tambahkan BOM agar karakter dibaca dengan benar saat dibuka di Excel
+    const csvContent = csvLines.join("\r\n");
+
+    // Tambahkan UTF-8 BOM (\uFEFF) agar terbaca rapi di Microsoft Excel, LibreOffice, dan Google Sheets
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -140,7 +174,7 @@ export default function RekapPage() {
             </button>
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row">
+          <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center">
             <select
               value={filterPraktikum}
               onChange={(e) => setFilterPraktikum(e.target.value)}
@@ -173,43 +207,45 @@ export default function RekapPage() {
         )}
 
         <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-card">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 font-mono text-[11px] uppercase tracking-wider text-slate-400">
-                <th className="px-6 py-4 font-semibold">NIM</th>
-                <th className="px-6 py-4 font-semibold">Nama</th>
-                <th className="px-6 py-4 font-semibold">Praktikum</th>
-                <th className="px-6 py-4 font-semibold">Waktu Mulai</th>
-                <th className="px-6 py-4 font-semibold">Pelanggaran</th>
-                <th className="px-6 py-4 font-semibold">Durasi</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
+                <th className="w-12 px-4 py-4 font-semibold text-center">No</th>
+                <th className="px-5 py-4 font-semibold">NIM</th>
+                <th className="px-5 py-4 font-semibold">Nama Mahasiswa</th>
+                <th className="px-5 py-4 font-semibold">Praktikum</th>
+                <th className="px-5 py-4 font-semibold">Waktu Mulai</th>
+                <th className="px-5 py-4 font-semibold">Pelanggaran</th>
+                <th className="px-5 py-4 font-semibold">Durasi</th>
+                <th className="px-5 py-4 font-semibold">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                     Memuat data...
                   </td>
                 </tr>
               ) : rekap.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                     Belum ada data peserta untuk filter yang dipilih.
                   </td>
                 </tr>
               ) : (
-                rekap.map((item) => (
+                rekap.map((item, index) => (
                   <tr key={item.id_peserta} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-mono text-slate-600">{item.nim}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-900">{item.nama}</td>
-                    <td className="max-w-[220px] truncate px-6 py-4 text-slate-600" title={item.praktikum}>
+                    <td className="px-4 py-4 font-mono text-xs text-slate-400 text-center">{index + 1}</td>
+                    <td className="px-5 py-4 font-mono text-slate-600">{item.nim}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-900">{item.nama}</td>
+                    <td className="max-w-[220px] truncate px-5 py-4 text-slate-600" title={item.praktikum}>
                       {item.praktikum}
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs text-slate-500">
+                    <td className="px-5 py-4 font-mono text-xs text-slate-500">
                       {formatWaktuMulai(item.waktu_mulai)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-4">
                       <span
                         className={`font-mono font-bold ${
                           item.jumlah_pelanggaran > 0 ? "text-amber-600" : "text-slate-300"
@@ -218,10 +254,10 @@ export default function RekapPage() {
                         {item.jumlah_pelanggaran} Kali
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-mono text-slate-600">
+                    <td className="px-5 py-4 font-mono text-slate-600">
                       {formatDurasi(item.durasi_detik)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-4">
                       <span
                         className={`rounded-md px-2 py-1 font-mono text-[11px] font-bold ${
                           item.status === "selesai"

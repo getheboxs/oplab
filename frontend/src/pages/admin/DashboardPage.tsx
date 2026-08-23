@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Users,
   UserCheck,
@@ -204,12 +205,12 @@ export default function AdminDashboardPage() {
                       {summary.sesiAktif.bahasa === "javascript" ? "JAVASCRIPT" : "TYPESCRIPT"}
                     </span>
                   </span>
-                  <span
-                    title="Segera hadir"
-                    className="cursor-not-allowed font-semibold text-slate-300"
+                  <Link
+                    to={summary.sesiAktif?.id_praktikum ? `/admin/monitor?idPraktikum=${summary.sesiAktif.id_praktikum}` : "/admin/monitor"}
+                    className="inline-flex items-center gap-1 font-semibold text-brand-600 transition hover:text-brand-700 hover:underline"
                   >
                     Buka Monitor Live &rarr;
-                  </span>
+                  </Link>
                 </div>
               </div>
             )}

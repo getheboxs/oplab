@@ -1,7 +1,6 @@
-import { RowDataPacket } from "mysql2";
 import { pool } from "../config/db.js";
 
-export interface MonitorListRow extends RowDataPacket {
+export interface MonitorListRow {
   id_peserta: number;
   nim: string;
   nama: string;
@@ -23,18 +22,22 @@ export interface MonitorFilter {
 export async function findMonitorList(filter: MonitorFilter): Promise<MonitorListRow[]> {
   const conditions: string[] = [];
   const params: (string | number)[] = [];
+  let paramIndex = 1;
 
   if (filter.search) {
-    conditions.push("(p.nama LIKE ? OR p.nim LIKE ?)");
+    conditions.push(`(p.nama ILIKE $${paramIndex} OR p.nim ILIKE $${paramIndex + 1})`);
     params.push(`%${filter.search}%`, `%${filter.search}%`);
+    paramIndex += 2;
   }
   if (filter.idPraktikum) {
-    conditions.push("p.id_praktikum = ?");
+    conditions.push(`p.id_praktikum = $${paramIndex}`);
     params.push(filter.idPraktikum);
+    paramIndex += 1;
   }
   if (filter.status) {
-    conditions.push("p.status = ?");
+    conditions.push(`p.status = $${paramIndex}`);
     params.push(filter.status);
+    paramIndex += 1;
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -55,7 +58,7 @@ export async function findMonitorList(filter: MonitorFilter): Promise<MonitorLis
   return rows;
 }
 
-export interface MonitorDetailRow extends RowDataPacket {
+export interface MonitorDetailRow {
   id_peserta: number;
   nim: string;
   nama: string;
@@ -78,27 +81,27 @@ export async function findMonitorDetail(idPeserta: number): Promise<MonitorDetai
         (SELECT COUNT(*) FROM violation_log v WHERE v.id_peserta = p.id_peserta) AS total_pelanggaran
      FROM peserta p
      JOIN praktikum pr ON p.id_praktikum = pr.id_praktikum
-     WHERE p.id_peserta = ?
+     WHERE p.id_peserta = $1
      LIMIT 1`,
     [idPeserta]
   );
   return rows[0] ?? null;
 }
 
-export interface SubmissionRow extends RowDataPacket {
+export interface SubmissionRow {
   kode_program: string;
   durasi_pengerjaan_detik: number | null;
 }
 
 export async function findSubmissionByPeserta(idPeserta: number): Promise<SubmissionRow | null> {
   const [rows] = await pool.query<SubmissionRow[]>(
-    "SELECT kode_program, durasi_pengerjaan_detik FROM submission WHERE id_peserta = ? LIMIT 1",
+    "SELECT kode_program, durasi_pengerjaan_detik FROM submission WHERE id_peserta = $1 LIMIT 1",
     [idPeserta]
   );
   return rows[0] ?? null;
 }
 
-export interface ViolationRow extends RowDataPacket {
+export interface ViolationRow {
   id_violation: number;
   jenis_pelanggaran: string;
   waktu_terjadi: string;
@@ -107,7 +110,7 @@ export interface ViolationRow extends RowDataPacket {
 export async function findViolationsByPeserta(idPeserta: number): Promise<ViolationRow[]> {
   const [rows] = await pool.query<ViolationRow[]>(
     `SELECT id_violation, jenis_pelanggaran, waktu_terjadi
-     FROM violation_log WHERE id_peserta = ? ORDER BY waktu_terjadi DESC`,
+     FROM violation_log WHERE id_peserta = $1 ORDER BY waktu_terjadi DESC`,
     [idPeserta]
   );
   return rows;

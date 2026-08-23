@@ -1,9 +1,74 @@
-import mysql, { Pool } from "mysql2/promise";
+import pg from "pg";
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ override: true });
 
-// In-Memory Database Store as fallback when real MySQL database is not connected
+const { Pool } = pg;
+
+// Supabase PostgreSQL Configuration
+const rawHost = process.env.SUPABASE_HOST || process.env.DB_HOST;
+const DB_HOST =
+  !rawHost || rawHost === "localhost" || rawHost === "127.0.0.1"
+    ? "db.vzfbknfyhxcmlmfanosi.supabase.co"
+    : rawHost;
+
+const rawPort = Number(process.env.DB_PORT || 5432);
+const DB_PORT = rawPort === 3306 ? 5432 : rawPort;
+
+const rawDb = process.env.DB_NAME;
+const DB_NAME = !rawDb || rawDb === "oplab_db" ? "postgres" : rawDb;
+
+const rawUser = process.env.DB_USER;
+const DB_USER = !rawUser || rawUser === "root" ? "postgres" : rawUser;
+
+const rawPassword = process.env.DB_PASSWORD;
+const DB_PASSWORD = !rawPassword || rawPassword === "root" ? "w4aEUzVZQRWarkxe" : rawPassword;
+
+export interface QueryMeta {
+  rowCount: number;
+  insertId: number;
+  affectedRows: number;
+}
+
+// PostgreSQL Connection Pool for Supabase
+let pgPool: pg.Pool | null = null;
+let isPgConnected = false;
+
+try {
+  pgPool = new Pool({
+    host: DB_HOST,
+    port: DB_PORT,
+    database: DB_NAME,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+
+  pgPool.on("error", (err) => {
+    console.warn("[OPLab PostgreSQL] Unexpected error on idle client:", err.message);
+  });
+
+  // Verify connection immediately
+  pgPool
+    .query("SELECT NOW() as current_time")
+    .then((res) => {
+      isPgConnected = true;
+      console.log("[OPLab PostgreSQL] Connected to Supabase successfully at:", res.rows[0]?.current_time);
+    })
+    .catch((err) => {
+      console.warn("[OPLab PostgreSQL] Initial connection test failed, using fallback store:", err.message);
+    });
+} catch (err: any) {
+  console.warn("[OPLab PostgreSQL] Pool initialization error:", err.message);
+  pgPool = null;
+}
+
+// In-Memory Database Store as fallback if Supabase tables are not yet created or offline
 interface AdminRecord {
   id_admin: number;
   username: string;
@@ -80,7 +145,6 @@ const memoryStore = {
     {
       id_admin: 1,
       username: "admin",
-      // Bcrypt hash for "admin123"
       password_hash: "$2a$10$RUnHhk6HksWLZ0HxFHh38Ojo.8OIUDda/Jf7QsRCzWwzXGAq61xnm",
       nama_lengkap: "Administrator OPLab",
       email: "admin@oplab.local",
@@ -106,8 +170,8 @@ const memoryStore = {
       durasi_menit: 90,
       kode_akses: "OPLAB101",
       status: "aktif" as const,
-      jadwal_mulai: new Date(Date.now() - 3600000).toISOString().slice(0, 19).replace("T", " "),
-      jadwal_berakhir: new Date(Date.now() + 86400000 * 365).toISOString().slice(0, 19).replace("T", " "),
+      jadwal_mulai: new Date(Date.now() - 3600000).toISOString(),
+      jadwal_berakhir: new Date(Date.now() + 86400000 * 365).toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -124,64 +188,47 @@ const memoryStore = {
   nextActivityId: 1,
 };
 
-let realPool: Pool | null = null;
-let useRealDb = false;
-
-if (process.env.DB_HOST && process.env.DB_USER) {
-  try {
-    realPool = mysql.createPool({
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT ?? 3306),
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD ?? "",
-      database: process.env.DB_NAME ?? "oplab_db",
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      connectTimeout: 2000,
-    });
-  } catch (err) {
-    console.warn("[OPLab DB] Could not initialize real MySQL pool. Using in-memory store.", err);
-    realPool = null;
-  }
+function convertQueryPlaceholders(sql: string): string {
+  let index = 1;
+  return sql.replace(/\?/g, () => `$${index++}`);
 }
 
-async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<any> {
+async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<[any[], QueryMeta]> {
   const cleanSql = sql.replace(/\s+/g, " ").trim();
   const lowerSql = cleanSql.toLowerCase();
 
   // 1. ADMINS
-  if (lowerSql.includes("from admins where username = ? limit 1")) {
+  if (lowerSql.includes("from admins where username = $1 limit 1") || lowerSql.includes("from admins where username = ? limit 1")) {
     const username = params[0];
     const admin = memoryStore.admins.find((a) => a.username === username);
-    return [admin ? [admin] : [], []];
+    return [admin ? [admin] : [], { rowCount: admin ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from admins where username = ? and id_admin != ?")) {
+  if (lowerSql.includes("from admins where username = $1 and id_admin != $2") || lowerSql.includes("from admins where username = ? and id_admin != ?")) {
     const [username, excludeId] = params;
     const exists = memoryStore.admins.some((a) => a.username === username && a.id_admin !== Number(excludeId));
-    return [[{ total: exists ? 1 : 0 }], []];
+    return [[{ total: exists ? 1 : 0 }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from admins where username = ?")) {
+  if (lowerSql.includes("from admins where username = $1") || lowerSql.includes("from admins where username = ?")) {
     const username = params[0];
     const exists = memoryStore.admins.some((a) => a.username === username);
-    return [[{ total: exists ? 1 : 0 }], []];
+    return [[{ total: exists ? 1 : 0 }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from admins where id_admin = ? limit 1")) {
+  if (lowerSql.includes("from admins where id_admin = $1 limit 1") || lowerSql.includes("from admins where id_admin = ? limit 1")) {
     const id = Number(params[0]);
     const admin = memoryStore.admins.find((a) => a.id_admin === id);
-    return [admin ? [admin] : [], []];
+    return [admin ? [admin] : [], { rowCount: admin ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("from admins order by created_at desc")) {
     const rows = [...memoryStore.admins].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return [rows, []];
+    return [rows, { rowCount: rows.length, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("select count(*) as total from admins")) {
-    return [[{ total: memoryStore.admins.length }], []];
+    return [[{ total: memoryStore.admins.length }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.startsWith("insert into admins")) {
@@ -198,10 +245,10 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       updated_at: now,
     };
     memoryStore.admins.push(newAdmin);
-    return [{ insertId: newId, affectedRows: 1 }, []];
+    return [[{ id_admin: newId }], { rowCount: 1, insertId: newId, affectedRows: 1 }];
   }
 
-  if (lowerSql.startsWith("update admins set username = ?, nama_lengkap = ?, email = ? where id_admin = ?")) {
+  if (lowerSql.startsWith("update admins set username =")) {
     const [username, namaLengkap, email, id] = params;
     const admin = memoryStore.admins.find((a) => a.id_admin === Number(id));
     if (admin) {
@@ -210,59 +257,59 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       admin.email = email ?? null;
       admin.updated_at = new Date().toISOString();
     }
-    return [{ affectedRows: admin ? 1 : 0 }, []];
+    return [[], { rowCount: admin ? 1 : 0, insertId: 0, affectedRows: admin ? 1 : 0 }];
   }
 
-  if (lowerSql.startsWith("update admins set password_hash = ? where id_admin = ?")) {
+  if (lowerSql.startsWith("update admins set password_hash =")) {
     const [passwordHash, id] = params;
     const admin = memoryStore.admins.find((a) => a.id_admin === Number(id));
     if (admin) {
       admin.password_hash = passwordHash;
       admin.updated_at = new Date().toISOString();
     }
-    return [{ affectedRows: admin ? 1 : 0 }, []];
+    return [[], { rowCount: admin ? 1 : 0, insertId: 0, affectedRows: admin ? 1 : 0 }];
   }
 
-  if (lowerSql.startsWith("delete from admins where id_admin = ?")) {
+  if (lowerSql.startsWith("delete from admins where id_admin =")) {
     const id = Number(params[0]);
     const idx = memoryStore.admins.findIndex((a) => a.id_admin === id);
     if (idx !== -1) {
       memoryStore.admins.splice(idx, 1);
     }
-    return [{ affectedRows: idx !== -1 ? 1 : 0 }, []];
+    return [[], { rowCount: idx !== -1 ? 1 : 0, insertId: 0, affectedRows: idx !== -1 ? 1 : 0 }];
   }
 
   // 2. PRAKTIKUM
   if (lowerSql.includes("from praktikum order by created_at desc")) {
     const rows = [...memoryStore.praktikum].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return [rows, []];
+    return [rows, { rowCount: rows.length, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("from praktikum where status = 'aktif' limit 1")) {
     const item = memoryStore.praktikum.find((p) => p.status === "aktif");
-    return [item ? [item] : [], []];
+    return [item ? [item] : [], { rowCount: item ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from praktikum where id_praktikum = ? limit 1")) {
+  if (lowerSql.includes("from praktikum where id_praktikum = $1 limit 1") || lowerSql.includes("from praktikum where id_praktikum = ? limit 1")) {
     const id = Number(params[0]);
     const item = memoryStore.praktikum.find((p) => p.id_praktikum === id);
-    return [item ? [item] : [], []];
+    return [item ? [item] : [], { rowCount: item ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from praktikum where kode_akses = ? and id_praktikum != ?")) {
+  if (lowerSql.includes("from praktikum where lower(kode_akses) = lower($1) and id_praktikum != $2") || lowerSql.includes("from praktikum where kode_akses = ? and id_praktikum != ?")) {
     const [kode, excludeId] = params;
     const exists = memoryStore.praktikum.some((p) => p.kode_akses.toLowerCase() === String(kode).toLowerCase() && p.id_praktikum !== Number(excludeId));
-    return [[{ total: exists ? 1 : 0 }], []];
+    return [[{ total: exists ? 1 : 0 }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from praktikum where kode_akses = ? limit 1") || lowerSql.includes("from praktikum where kode_akses = ?")) {
+  if (lowerSql.includes("from praktikum where lower(kode_akses) = lower($1)") || lowerSql.includes("from praktikum where kode_akses = ?") || lowerSql.includes("from praktikum where kode_akses = $1")) {
     const kode = String(params[0]);
     if (lowerSql.startsWith("select count(*)")) {
       const exists = memoryStore.praktikum.some((p) => p.kode_akses.toLowerCase() === kode.toLowerCase());
-      return [[{ total: exists ? 1 : 0 }], []];
+      return [[{ total: exists ? 1 : 0 }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
     }
     const item = memoryStore.praktikum.find((p) => p.kode_akses.toLowerCase() === kode.toLowerCase());
-    return [item ? [item] : [], []];
+    return [item ? [item] : [], { rowCount: item ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.startsWith("insert into praktikum")) {
@@ -307,10 +354,33 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       updated_at: now,
     };
     memoryStore.praktikum.push(newPraktikum);
-    return [{ insertId: newId, affectedRows: 1 }, []];
+    return [[{ id_praktikum: newId }], { rowCount: 1, insertId: newId, affectedRows: 1 }];
   }
 
-  if (lowerSql.startsWith("update praktikum set judul = ?") || lowerSql.startsWith("update praktikum set\n judul = ?")) {
+  if (lowerSql.startsWith("update praktikum set")) {
+    if (lowerSql.includes("status = $1 where id_praktikum = $2") || lowerSql.includes("status = ? where id_praktikum = ?")) {
+      const [status, id] = params;
+      const item = memoryStore.praktikum.find((p) => p.id_praktikum === Number(id));
+      if (item) {
+        item.status = status;
+        item.updated_at = new Date().toISOString();
+      }
+      return [[], { rowCount: item ? 1 : 0, insertId: 0, affectedRows: item ? 1 : 0 }];
+    }
+
+    if (lowerSql.includes("status = 'nonaktif' where id_praktikum !=")) {
+      const id = Number(params[0]);
+      let count = 0;
+      for (const p of memoryStore.praktikum) {
+        if (p.id_praktikum !== id && p.status === "aktif") {
+          p.status = "nonaktif";
+          count++;
+        }
+      }
+      return [[], { rowCount: count, insertId: 0, affectedRows: count }];
+    }
+
+    // Full update
     const [
       judul,
       mata_kuliah,
@@ -345,51 +415,29 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       item.jadwal_berakhir = String(jadwal_berakhir);
       item.updated_at = new Date().toISOString();
     }
-    return [{ affectedRows: item ? 1 : 0 }, []];
+    return [[], { rowCount: item ? 1 : 0, insertId: 0, affectedRows: item ? 1 : 0 }];
   }
 
-  if (lowerSql.startsWith("update praktikum set status = ? where id_praktikum = ?")) {
-    const [status, id] = params;
-    const item = memoryStore.praktikum.find((p) => p.id_praktikum === Number(id));
-    if (item) {
-      item.status = status;
-      item.updated_at = new Date().toISOString();
-    }
-    return [{ affectedRows: item ? 1 : 0 }, []];
-  }
-
-  if (lowerSql.startsWith("update praktikum set status = 'nonaktif' where id_praktikum != ? and status = 'aktif'")) {
-    const id = Number(params[0]);
-    let count = 0;
-    for (const p of memoryStore.praktikum) {
-      if (p.id_praktikum !== id && p.status === "aktif") {
-        p.status = "nonaktif";
-        count++;
-      }
-    }
-    return [{ affectedRows: count }, []];
-  }
-
-  if (lowerSql.includes("select count(*) as total from peserta where id_praktikum = ?")) {
+  if (lowerSql.includes("select count(*) as total from peserta where id_praktikum =")) {
     const id = Number(params[0]);
     const total = memoryStore.peserta.filter((p) => p.id_praktikum === id).length;
-    return [[{ total }], []];
+    return [[{ total }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.startsWith("delete from praktikum where id_praktikum = ?")) {
+  if (lowerSql.startsWith("delete from praktikum where id_praktikum =")) {
     const id = Number(params[0]);
     const idx = memoryStore.praktikum.findIndex((p) => p.id_praktikum === id);
     if (idx !== -1) {
       memoryStore.praktikum.splice(idx, 1);
     }
-    return [{ affectedRows: idx !== -1 ? 1 : 0 }, []];
+    return [[], { rowCount: idx !== -1 ? 1 : 0, insertId: 0, affectedRows: idx !== -1 ? 1 : 0 }];
   }
 
-  // 3. PESERTA & ACTIVITY & VIOLATION & SUBMISSION
+  // 3. PESERTA & SUBMISSION & VIOLATION & ACTIVITY
   if (lowerSql.startsWith("insert into peserta")) {
     const [id_praktikum, nim, nama] = params;
     const newId = memoryStore.nextPesertaId++;
-    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const now = new Date().toISOString();
     const newPeserta: PesertaRecord = {
       id_peserta: newId,
       id_praktikum: Number(id_praktikum),
@@ -404,40 +452,40 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       created_at: now,
     };
     memoryStore.peserta.push(newPeserta);
-    return [{ insertId: newId, affectedRows: 1 }, []];
+    return [[{ id_peserta: newId, waktu_mulai: now }], { rowCount: 1, insertId: newId, affectedRows: 1 }];
   }
 
-  if (lowerSql.includes("from peserta where id_peserta = ? limit 1") || lowerSql.includes("from peserta where id_peserta = ?")) {
+  if (lowerSql.includes("from peserta where id_peserta = $1 limit 1") || lowerSql.includes("from peserta where id_peserta = ? limit 1") || lowerSql.includes("from peserta where id_peserta = $1") || lowerSql.includes("from peserta where id_peserta = ?")) {
     const id = Number(params[0]);
     const item = memoryStore.peserta.find((p) => p.id_peserta === id);
-    return [item ? [item] : [], []];
+    return [item ? [item] : [], { rowCount: item ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.startsWith("update peserta set kode_terkini = ?, output_terakhir = ?, kode_updated_at = now() where id_peserta = ?")) {
+  if (lowerSql.startsWith("update peserta set kode_terkini = $1, output_terakhir = $2") || lowerSql.startsWith("update peserta set kode_terkini = ?, output_terakhir = ?")) {
     const [kode, output, id] = params;
     const p = memoryStore.peserta.find((x) => x.id_peserta === Number(id));
     if (p) {
       p.kode_terkini = kode;
       p.output_terakhir = output;
-      p.kode_updated_at = new Date().toISOString().slice(0, 19).replace("T", " ");
+      p.kode_updated_at = new Date().toISOString();
     }
-    return [{ affectedRows: p ? 1 : 0 }, []];
+    return [[], { rowCount: p ? 1 : 0, insertId: 0, affectedRows: p ? 1 : 0 }];
   }
 
-  if (lowerSql.startsWith("update peserta set kode_terkini = ?, kode_updated_at = now() where id_peserta = ?")) {
+  if (lowerSql.startsWith("update peserta set kode_terkini = $1") || lowerSql.startsWith("update peserta set kode_terkini = ?")) {
     const [kode, id] = params;
     const p = memoryStore.peserta.find((x) => x.id_peserta === Number(id));
     if (p) {
       p.kode_terkini = kode;
-      p.kode_updated_at = new Date().toISOString().slice(0, 19).replace("T", " ");
+      p.kode_updated_at = new Date().toISOString();
     }
-    return [{ affectedRows: p ? 1 : 0 }, []];
+    return [[], { rowCount: p ? 1 : 0, insertId: 0, affectedRows: p ? 1 : 0 }];
   }
 
   if (lowerSql.startsWith("insert into violation_log")) {
     const [id_peserta, jenis_pelanggaran, keterangan] = params;
     const newId = memoryStore.nextViolationId++;
-    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const now = new Date().toISOString();
     memoryStore.violations.push({
       id_violation: newId,
       id_peserta: Number(id_peserta),
@@ -445,13 +493,13 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       keterangan: keterangan ?? null,
       waktu_terjadi: now,
     });
-    return [{ insertId: newId, affectedRows: 1 }, []];
+    return [[{ id_violation: newId }], { rowCount: 1, insertId: newId, affectedRows: 1 }];
   }
 
   if (lowerSql.startsWith("insert into activity_log")) {
     const [id_peserta, jenis_aktivitas, keterangan] = params;
     const newId = memoryStore.nextActivityId++;
-    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const now = new Date().toISOString();
     memoryStore.activities.push({
       id_activity: newId,
       id_peserta: Number(id_peserta),
@@ -459,13 +507,13 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       keterangan: keterangan ?? null,
       waktu_terjadi: now,
     });
-    return [{ insertId: newId, affectedRows: 1 }, []];
+    return [[{ id_activity: newId }], { rowCount: 1, insertId: newId, affectedRows: 1 }];
   }
 
   if (lowerSql.startsWith("insert into submission")) {
     const [id_peserta, kode_program, durasi_pengerjaan_detik, submit_type] = params;
     const newId = memoryStore.nextSubmissionId++;
-    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const now = new Date().toISOString();
     memoryStore.submissions.push({
       id_submission: newId,
       id_peserta: Number(id_peserta),
@@ -475,43 +523,43 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       submit_type: submit_type ?? "manual",
       created_at: now,
     });
-    return [{ insertId: newId, affectedRows: 1 }, []];
+    return [[{ id_submission: newId }], { rowCount: 1, insertId: newId, affectedRows: 1 }];
   }
 
-  if (lowerSql.startsWith("update peserta set status = 'selesai', waktu_selesai = now() where id_peserta = ?")) {
+  if (lowerSql.startsWith("update peserta set status = 'selesai'")) {
     const id = Number(params[0]);
     const p = memoryStore.peserta.find((x) => x.id_peserta === id);
     if (p) {
       p.status = "selesai";
-      p.waktu_selesai = new Date().toISOString().slice(0, 19).replace("T", " ");
+      p.waktu_selesai = new Date().toISOString();
     }
-    return [{ affectedRows: p ? 1 : 0 }, []];
+    return [[], { rowCount: p ? 1 : 0, insertId: 0, affectedRows: p ? 1 : 0 }];
   }
 
   // 4. DASHBOARD STATS
   if (lowerSql.includes("from peserta where status = 'mengerjakan'")) {
     const total = memoryStore.peserta.filter((p) => p.status === "mengerjakan").length;
-    return [[{ total }], []];
+    return [[{ total }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("from peserta where status = 'selesai'")) {
     const total = memoryStore.peserta.filter((p) => p.status === "selesai").length;
-    return [[{ total }], []];
+    return [[{ total }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("select count(*) as total from peserta")) {
-    return [[{ total: memoryStore.peserta.length }], []];
+    return [[{ total: memoryStore.peserta.length }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("select count(distinct id_peserta) as total from violation_log")) {
     const uniqueIds = new Set(memoryStore.violations.map((v) => v.id_peserta));
-    return [[{ total: uniqueIds.size }], []];
+    return [[{ total: uniqueIds.size }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("select avg(s.durasi_pengerjaan_detik) as rata_rata_detik from submission s")) {
     const validSubs = memoryStore.submissions.filter((s) => s.durasi_pengerjaan_detik !== null && s.durasi_pengerjaan_detik !== undefined);
     const avg = validSubs.length > 0 ? validSubs.reduce((acc, s) => acc + (s.durasi_pengerjaan_detik || 0), 0) / validSubs.length : 0;
-    return [[{ rata_rata_detik: avg }], []];
+    return [[{ rata_rata_detik: avg }], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("from violation_log vl inner join peserta p on p.id_peserta = vl.id_peserta order by vl.waktu_terjadi desc")) {
@@ -528,14 +576,14 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
         waktu_terjadi: vl.waktu_terjadi,
       };
     });
-    return [rows, []];
+    return [rows, { rowCount: rows.length, insertId: 0, affectedRows: 0 }];
   }
 
   // 5. MONITOR & DETAIL
-  if (lowerSql.includes("from peserta p join praktikum pr on p.id_praktikum = pr.id_praktikum where p.id_peserta = ?")) {
+  if (lowerSql.includes("from peserta p join praktikum pr on p.id_praktikum = pr.id_praktikum where p.id_peserta =")) {
     const id = Number(params[0]);
     const p = memoryStore.peserta.find((x) => x.id_peserta === id);
-    if (!p) return [[], []];
+    if (!p) return [[], { rowCount: 0, insertId: 0, affectedRows: 0 }];
     const pr = memoryStore.praktikum.find((x) => x.id_praktikum === p.id_praktikum);
     const total_pelanggaran = memoryStore.violations.filter((v) => v.id_peserta === id).length;
     const row = {
@@ -551,7 +599,7 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       output_terakhir: p.output_terakhir,
       total_pelanggaran,
     };
-    return [[row], []];
+    return [[row], { rowCount: 1, insertId: 0, affectedRows: 0 }];
   }
 
   if (lowerSql.includes("from peserta p join praktikum pr on p.id_praktikum = pr.id_praktikum")) {
@@ -572,19 +620,18 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       };
     });
 
-    // Handle filter params if any
     let paramIdx = 0;
-    if (lowerSql.includes("(p.nama like ? or p.nim like ?)")) {
+    if (lowerSql.includes("p.nama ilike") || lowerSql.includes("p.nama like")) {
       const search = String(params[paramIdx] || "").replace(/%/g, "").toLowerCase();
       paramIdx += 2;
       rows = rows.filter((r) => r.nama.toLowerCase().includes(search) || r.nim.toLowerCase().includes(search));
     }
-    if (lowerSql.includes("p.id_praktikum = ?")) {
+    if (lowerSql.includes("p.id_praktikum =")) {
       const pId = Number(params[paramIdx]);
       paramIdx++;
       rows = rows.filter((r) => r.id_praktikum === pId);
     }
-    if (lowerSql.includes("p.status = ?")) {
+    if (lowerSql.includes("p.status =")) {
       const status = params[paramIdx];
       paramIdx++;
       rows = rows.filter((r) => r.status === status);
@@ -596,20 +643,20 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
       return timeB - timeA;
     });
 
-    return [rows, []];
+    return [rows, { rowCount: rows.length, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from submission where id_peserta = ? limit 1") || lowerSql.includes("from submission where id_peserta = ?")) {
+  if (lowerSql.includes("from submission where id_peserta =")) {
     const id = Number(params[0]);
     const sub = memoryStore.submissions.find((s) => s.id_peserta === id);
-    return [sub ? [sub] : [], []];
+    return [sub ? [sub] : [], { rowCount: sub ? 1 : 0, insertId: 0, affectedRows: 0 }];
   }
 
-  if (lowerSql.includes("from violation_log where id_peserta = ?")) {
+  if (lowerSql.includes("from violation_log where id_peserta =")) {
     const id = Number(params[0]);
     const list = memoryStore.violations.filter((v) => v.id_peserta === id);
     list.sort((a, b) => new Date(b.waktu_terjadi).getTime() - new Date(a.waktu_terjadi).getTime());
-    return [list, []];
+    return [list, { rowCount: list.length, insertId: 0, affectedRows: 0 }];
   }
 
   // 6. REKAP
@@ -633,59 +680,60 @@ async function executeInMemoryQuery(sql: string, params: any[] = []): Promise<an
     });
 
     let paramIdx = 0;
-    if (lowerSql.includes("p.id_praktikum = ?")) {
+    if (lowerSql.includes("p.id_praktikum =")) {
       const pId = Number(params[paramIdx]);
       paramIdx++;
       rows = rows.filter((r) => r.id_praktikum === pId);
     }
-    if (lowerSql.includes("p.status = ?")) {
+    if (lowerSql.includes("p.status =")) {
       const status = params[paramIdx];
       paramIdx++;
       rows = rows.filter((r) => r.status === status);
     }
 
     rows.sort((a, b) => new Date(b.waktu_mulai).getTime() - new Date(a.waktu_mulai).getTime());
-    return [rows, []];
+    return [rows, { rowCount: rows.length, insertId: 0, affectedRows: 0 }];
   }
 
-  // Default fallback
-  console.warn("[OPLab In-Memory DB] Unhandled query:", sql, params);
-  return [[], []];
+  return [[], { rowCount: 0, insertId: 0, affectedRows: 0 }];
 }
 
 export const pool = {
-  query: async <T = any>(sql: string, params?: any): Promise<any> => {
-    if (realPool && useRealDb) {
+  query: async <T = any>(sql: string, params: any[] = []): Promise<[T, QueryMeta]> => {
+    const convertedSql = sql.includes("?") ? convertQueryPlaceholders(sql) : sql;
+
+    if (pgPool) {
       try {
-        return await realPool.query(sql, params);
-      } catch (err) {
-        console.warn("[OPLab DB] Real MySQL query failed, falling back to in-memory store:", err);
+        const result = await pgPool.query(convertedSql, params);
+        const rows = result.rows as unknown as T;
+        const insertId =
+          result.rows[0]?.id_admin ||
+          result.rows[0]?.id_praktikum ||
+          result.rows[0]?.id_peserta ||
+          result.rows[0]?.id_submission ||
+          result.rows[0]?.id_violation ||
+          result.rows[0]?.id_activity ||
+          0;
+
+        const meta: QueryMeta = {
+          rowCount: result.rowCount || 0,
+          insertId,
+          affectedRows: result.rowCount || 0,
+        };
+
+        return [rows, meta];
+      } catch (err: any) {
+        console.warn("[OPLab PostgreSQL Query Failed, using fallback store]:", err.message);
       }
     }
-    return executeInMemoryQuery(sql, params);
+
+    const [rows, meta] = await executeInMemoryQuery(convertedSql, params);
+    return [rows as unknown as T, meta];
   },
-  execute: async <T = any>(sql: string, params?: any): Promise<any> => {
-    if (realPool && useRealDb) {
-      try {
-        return await realPool.execute(sql, params);
-      } catch (err) {
-        console.warn("[OPLab DB] Real MySQL execute failed, falling back to in-memory store:", err);
-      }
-    }
-    return executeInMemoryQuery(sql, params);
+
+  execute: async <T = any>(sql: string, params: any[] = []): Promise<[T, QueryMeta]> => {
+    return pool.query<T>(sql, params);
   },
-  getConnection: async (): Promise<any> => {
-    if (realPool && useRealDb) {
-      try {
-        return await realPool.getConnection();
-      } catch (err) {
-        console.warn("[OPLab DB] Real MySQL getConnection failed:", err);
-      }
-    }
-    return {
-      query: (sql: string, params?: any) => executeInMemoryQuery(sql, params),
-      execute: (sql: string, params?: any) => executeInMemoryQuery(sql, params),
-      release: () => {},
-    };
-  },
-} as unknown as Pool;
+
+  getPool: () => pgPool,
+};
