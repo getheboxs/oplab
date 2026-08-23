@@ -1,0 +1,8 @@
+{
+  "name": "OPLab - Online Programming Lab",
+  "description": "Platform praktikum pemrograman online dengan monitoring aktivitas, safe mode, dan rekap otomatis",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
