@@ -21,16 +21,22 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/api/health", (_req, res) => {
+const apiRouter = express.Router();
+
+apiRouter.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api/admin", authRoutes);
-app.use("/api/admin/praktikum", praktikumRoutes);
-app.use("/api/admin/dashboard", dashboardRoutes);
-app.use("/api/admin/rekap", rekapRoutes);
-app.use("/api/admin/monitor", monitorRoutes);
-app.use("/api/admin/users", userRoutes);
-app.use("/api/public", publicRoutes);
+apiRouter.use("/admin", authRoutes);
+apiRouter.use("/admin/praktikum", praktikumRoutes);
+apiRouter.use("/admin/dashboard", dashboardRoutes);
+apiRouter.use("/admin/rekap", rekapRoutes);
+apiRouter.use("/admin/monitor", monitorRoutes);
+apiRouter.use("/admin/users", userRoutes);
+apiRouter.use("/public", publicRoutes);
+
+// Mount under both /api and root for maximum compatibility with Vercel serverless functions and standalone dev server
+app.use("/api", apiRouter);
+app.use("/", apiRouter);
 
 export default app;
