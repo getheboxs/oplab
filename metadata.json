@@ -1,8 +1,6 @@
 {
-  "name": "OPLab - Online Programming Lab",
-  "description": "Platform praktikum pemrograman online dengan monitoring aktivitas, safe mode, dan rekap otomatis",
+  "name": "Online Programming Lab",
+  "description": "A web-based practical exam platform for JavaScript and TypeScript with real-time student monitoring, activity logs, violation detection, and secure code execution.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
